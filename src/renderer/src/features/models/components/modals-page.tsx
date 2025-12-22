@@ -17,6 +17,7 @@ import GoogleConfigModal from './google-config-modal'
 import AnthropicConfigModal from './anthropic-config-modal'
 import VertexConfigModal from './vertex-config-modal'
 import OllamaConfigModal from './ollama-config-modal'
+import GitHubCopilotConfigModal from './github-copilot-config-modal'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { CheckCircle, Info, Settings2, Trash2 } from 'lucide-react'
@@ -49,6 +50,7 @@ export default function ModelsPage(): React.JSX.Element {
   const [isAnthropicModalOpen, setIsAnthropicModalOpen] = useState(false)
   const [isVertexModalOpen, setIsVertexModalOpen] = useState(false)
   const [isOllamaModalOpen, setIsOllamaModalOpen] = useState(false)
+  const [isGitHubCopilotModalOpen, setIsGitHubCopilotModalOpen] = useState(false)
 
   // Confirmation dialog state
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
@@ -66,6 +68,7 @@ export default function ModelsPage(): React.JSX.Element {
     anthropicConfig,
     vertexConfig,
     ollamaConfig,
+    githubCopilotConfig,
     embeddingConfig,
     isConfigured,
     clearProviderConfig,
@@ -113,6 +116,10 @@ export default function ModelsPage(): React.JSX.Element {
   const handleOllamaOpenModal = (): void => setIsOllamaModalOpen(true)
   const handleOllamaCloseModal = (): void => setIsOllamaModalOpen(false)
 
+  // GitHub Copilot handlers
+  const handleGitHubCopilotOpenModal = (): void => setIsGitHubCopilotModalOpen(true)
+  const handleGitHubCopilotCloseModal = (): void => setIsGitHubCopilotModalOpen(false)
+
   const handleClearConfiguration = (providerName: NonNullable<LLMProvider>): void => {
     setProviderToClear(providerName)
     setIsClearDialogOpen(true)
@@ -144,6 +151,9 @@ export default function ModelsPage(): React.JSX.Element {
         break
       case 'ollama':
         window.ctg.settings.setOllamaConfig({ baseURL: '', model: '' })
+        break
+      case 'github-copilot':
+        window.ctg.settings.setGitHubCopilotConfig({ apiKey: '', model: '', enterpriseUrl: '' })
         break
     }
 
@@ -337,6 +347,13 @@ export default function ModelsPage(): React.JSX.Element {
                   ollamaConfig,
                   handleOllamaOpenModal
                 )}
+                {createProviderCard(
+                  'github-copilot',
+                  'GitHub Copilot',
+                  'Access Copilot models via GitHub API',
+                  githubCopilotConfig,
+                  handleGitHubCopilotOpenModal
+                )}
               </div>
             </TabsContent>
 
@@ -440,6 +457,10 @@ export default function ModelsPage(): React.JSX.Element {
       <VertexConfigModal isOpen={isVertexModalOpen} onClose={handleVertexCloseModal} />
 
       <OllamaConfigModal isOpen={isOllamaModalOpen} onClose={handleOllamaCloseModal} />
+      <GitHubCopilotConfigModal
+        isOpen={isGitHubCopilotModalOpen}
+        onClose={handleGitHubCopilotCloseModal}
+      />
 
       {/* Confirmation Dialog for Clearing Configuration */}
       <ConfirmationDialog

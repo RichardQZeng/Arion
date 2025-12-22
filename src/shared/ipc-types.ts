@@ -108,7 +108,14 @@ export type {
   CodexStagedInput
 } from './types/codex-types'
 
-export type LLMProviderType = 'openai' | 'google' | 'azure' | 'anthropic' | 'vertex' | 'ollama'
+export type LLMProviderType =
+  | 'openai'
+  | 'google'
+  | 'azure'
+  | 'anthropic'
+  | 'vertex'
+  | 'ollama'
+  | 'github-copilot'
 export type EmbeddingProviderType =
   | 'openai'
   | 'google'
@@ -116,6 +123,7 @@ export type EmbeddingProviderType =
   | 'vertex'
   | 'azure'
   | 'ollama'
+  | 'github-copilot'
 
 export interface OpenAIConfig {
   apiKey: string
@@ -218,6 +226,18 @@ export interface McpServerTestResult {
   tools?: McpToolPreview[]
 }
 
+export interface GithubCopilotConfig {
+  apiKey?: string | null
+  model?: string | null
+  enterpriseUrl?: string | null // For GitHub Enterprise support
+}
+
+export interface GithubCopilotConfigForRenderer {
+  model?: string | null
+  enterpriseUrl?: string | null
+  hasApiKey: boolean
+}
+
 export type LLMConfigData =
   | OpenAIConfig
   | GoogleConfig
@@ -225,6 +245,7 @@ export type LLMConfigData =
   | AnthropicConfig
   | VertexConfig
   | OllamaConfig
+  | GithubCopilotConfig
 
 export interface AllLLMConfigurations {
   openai?: OpenAIConfig
@@ -233,6 +254,7 @@ export interface AllLLMConfigurations {
   anthropic?: AnthropicConfig
   vertex?: VertexConfig
   ollama?: OllamaConfig
+  githubCopilot?: GithubCopilotConfig
   embedding?: EmbeddingConfig
   activeProvider?: LLMProviderType | null
 }
@@ -245,6 +267,7 @@ export interface AllLLMConfigurationsForRenderer {
   vertex?: VertexConfigForRenderer
   ollama?: OllamaConfig
   embedding?: EmbeddingConfigForRenderer
+  githubCopilot?: GithubCopilotConfigForRenderer
   activeProvider?: LLMProviderType | null
 }
 
@@ -468,6 +491,7 @@ export const IpcChannels = {
   setAnthropicConfig: 'settings:set-anthropic-config',
   setVertexConfig: 'settings:set-vertex-config',
   setOllamaConfig: 'settings:set-ollama-config',
+  setGitHubCopilotConfig: 'settings:set-github-copilot-config',
   setEmbeddingConfig: 'settings:set-embedding-config',
   setActiveLLMProvider: 'settings:set-active-llm-provider',
 
@@ -478,6 +502,7 @@ export const IpcChannels = {
   getAnthropicConfig: 'settings:get-anthropic-config',
   getVertexConfig: 'settings:get-vertex-config',
   getOllamaConfig: 'settings:get-ollama-config',
+  getGitHubCopilotConfig: 'settings:get-github-copilot-config',
   getEmbeddingConfig: 'settings:get-embedding-config',
   getActiveLLMProvider: 'settings:get-active-llm-provider',
   getAllLLMConfigs: 'settings:get-all-llm-configs', // To load initial state
@@ -658,6 +683,8 @@ export interface SettingsApi {
   getVertexConfig: () => Promise<VertexConfigForRenderer | null>
   setOllamaConfig: (config: OllamaConfig) => Promise<void>
   getOllamaConfig: () => Promise<OllamaConfig | null>
+  setGitHubCopilotConfig: (config: GithubCopilotConfig) => Promise<void>
+  getGitHubCopilotConfig: () => Promise<GithubCopilotConfigForRenderer | null>
   setEmbeddingConfig: (config: EmbeddingConfig) => Promise<void>
   getEmbeddingConfig: () => Promise<EmbeddingConfig>
   setActiveLLMProvider: (provider: LLMProviderType | null) => Promise<void>

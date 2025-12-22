@@ -1,10 +1,10 @@
 import { type LanguageModel, simulateStreamingMiddleware, wrapLanguageModel } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createAzure } from '@ai-sdk/azure'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createVertex } from '@ai-sdk/google-vertex'
-// Replaced deprecated third-party wrapper with our in-house provider
 import { createOllama } from '../providers/ollama'
 import { SettingsService } from './settings-service'
 import { AgentRegistryService } from './agent-registry-service'
@@ -26,31 +26,19 @@ export class LLMProviderFactory {
     this.agentRegistryService = agentRegistryService
   }
 
-  /**
-   * Create an LLM instance based on agent-specific configuration or fall back to global settings
-   * @param agentId Optional agent ID to get model configuration for
-   * @returns Promise<LanguageModel> configured for the agent or global settings
-   */
   async createLLMFromAgentConfig(agentId?: string): Promise<LanguageModel> {
     const config = await this.getLLMConfig(agentId)
     return this.createLLMFromConfig(config.provider, config.model)
   }
 
-  /**
-   * Get LLM configuration for an agent or global settings
-   * @param agentId Optional agent ID to get configuration for
-   * @returns Promise<LLMProviderConfig> containing provider and model
-   */
   async getLLMConfig(agentId?: string): Promise<LLMProviderConfig> {
     let provider: string
     let model: string
 
-    // Try to get agent-specific configuration first
     if (agentId && this.agentRegistryService) {
       try {
         const agent = await this.agentRegistryService.getAgentById(agentId)
         if (agent?.modelConfig) {
-          // Validate agent model configuration
           const modelConfig = agent.modelConfig
           if (!modelConfig.provider || !modelConfig.model) {
             provider = (await this.settingsService.getActiveLLMProvider()) || ''
@@ -59,14 +47,14 @@ export class LLMProviderFactory {
             provider = modelConfig.provider
             model = modelConfig.model
 
-            // Validate that the provider is supported
             const supportedProviders = [
               'openai',
               'google',
               'azure',
               'anthropic',
               'vertex',
-              'ollama'
+              'ollama',
+              'github-copilot'
             ]
             if (!supportedProviders.includes(provider.toLowerCase())) {
               provider = (await this.settingsService.getActiveLLMProvider()) || ''
@@ -74,17 +62,14 @@ export class LLMProviderFactory {
             }
           }
         } else {
-          // Fall back to global settings
           provider = (await this.settingsService.getActiveLLMProvider()) || ''
           model = await this.getGlobalModelForProvider(provider)
         }
       } catch {
-        // Fall back to global settings
         provider = (await this.settingsService.getActiveLLMProvider()) || ''
         model = await this.getGlobalModelForProvider(provider)
       }
     } else {
-      // Use global settings
       provider = (await this.settingsService.getActiveLLMProvider()) || ''
       model = await this.getGlobalModelForProvider(provider)
     }
@@ -111,12 +96,6 @@ export class LLMProviderFactory {
     return { provider, model, reasoningCapabilityOverride }
   }
 
-  /**
-   * Create an LLM instance from provider and model configuration
-   * @param provider The LLM provider name
-   * @param model The model name/ID
-   * @returns Promise<LanguageModel> configured LLM instance
-   */
   async createLLMFromConfig(provider: string, model: string): Promise<LanguageModel> {
     switch (provider) {
       case 'openai':
@@ -131,14 +110,13 @@ export class LLMProviderFactory {
         return this.createVertexLLM(model)
       case 'ollama':
         return this.createOllamaLLM(model)
+      case 'github-copilot':
+        return this.createCopilotLLM(model)
       default:
         throw new Error(`Unsupported LLM provider: ${provider}`)
     }
   }
 
-  /**
-   * Helper method to get the global model name for a given provider
-   */
   private async getGlobalModelForProvider(provider: string): Promise<string> {
     switch (provider) {
       case 'openai': {
@@ -165,28 +143,24 @@ export class LLMProviderFactory {
         const ollamaConfig = await this.settingsService.getOllamaConfig()
         return ollamaConfig?.model || ''
       }
+      case 'github-copilot': {
+        const copilotConfig = await this.settingsService.getGitHubCopilotConfig()
+        return copilotConfig?.model || ''
+      }
       default:
         return ''
     }
   }
 
-  /**
-   * Create OpenAI LLM instance
-   */
   private async createOpenAILLM(model: string): Promise<LanguageModel> {
     const openaiConfig = await this.settingsService.getOpenAIConfig()
     if (!openaiConfig?.apiKey) {
       throw new Error('OpenAI provider is not configured correctly.')
     }
     const customOpenAI = createOpenAI({ apiKey: openaiConfig.apiKey })
-    // IMPORTANT: use auto API selection so reasoning models (o3/o4-mini) use Responses API
-    // which supports reasoning summaries and streaming reasoning events.
     return customOpenAI(model as Parameters<typeof customOpenAI>[0])
   }
 
-  /**
-   * Create Google LLM instance
-   */
   private async createGoogleLLM(model: string): Promise<LanguageModel> {
     const googleConfig = await this.settingsService.getGoogleConfig()
     if (!googleConfig?.apiKey) {
@@ -196,9 +170,6 @@ export class LLMProviderFactory {
     return customGoogleProvider(model as Parameters<typeof customGoogleProvider>[0])
   }
 
-  /**
-   * Create Azure OpenAI LLM instance
-   */
   private async createAzureLLM(model: string): Promise<LanguageModel> {
     const azureConfig = await this.settingsService.getAzureConfig()
     if (!azureConfig?.apiKey || !azureConfig.endpoint || !azureConfig.deploymentName) {
@@ -212,9 +183,6 @@ export class LLMProviderFactory {
     return configuredAzure.chat(model || azureConfig.deploymentName) as unknown as LanguageModel
   }
 
-  /**
-   * Create Anthropic LLM instance
-   */
   private async createAnthropicLLM(model: string): Promise<LanguageModel> {
     const anthropicConfig = await this.settingsService.getAnthropicConfig()
     if (!anthropicConfig?.apiKey) {
@@ -224,9 +192,6 @@ export class LLMProviderFactory {
     return customAnthropic.messages(model as Parameters<typeof customAnthropic.messages>[0])
   }
 
-  /**
-   * Create Vertex AI LLM instance
-   */
   private async createVertexLLM(model: string): Promise<LanguageModel> {
     const vertexConfig = await this.settingsService.getVertexConfig()
     if (!vertexConfig?.apiKey || !vertexConfig.project || !vertexConfig.location) {
@@ -251,24 +216,18 @@ export class LLMProviderFactory {
     return vertexProvider(model as Parameters<typeof vertexProvider>[0]) as unknown as LanguageModel
   }
 
-  /**
-   * Create Ollama LLM instance
-   */
   private async createOllamaLLM(model: string): Promise<LanguageModel> {
     const ollamaConfig = await this.settingsService.getOllamaConfig()
     if (!ollamaConfig?.baseURL) {
       throw new Error('Ollama provider is not configured correctly.')
     }
 
-    // Our provider expects the Ollama host without /api (client adds endpoints)
-    // Normalize: remove trailing slash and optional trailing /api
     let baseURL = ollamaConfig.baseURL.trim()
     baseURL = baseURL.replace(/\/$/, '')
     baseURL = baseURL.replace(/\/api\/?$/, '')
 
     const ollamaProvider = createOllama({ baseURL })
 
-    // Keep behavior: wrap simulate streaming for non-reasoning models only
     const isReasoningModel = detectReasoningModel(model, 'ollama')
     if (!isReasoningModel) {
       return wrapLanguageModel({
@@ -278,5 +237,102 @@ export class LLMProviderFactory {
     }
 
     return ollamaProvider(model as Parameters<typeof ollamaProvider>[0])
+  }
+
+  private async createCopilotLLM(model: string): Promise<LanguageModel> {
+    const copilotConfig = await this.settingsService.getGitHubCopilotConfig()
+    if (!copilotConfig?.apiKey) {
+      throw new Error('GitHub Copilot provider is not configured correctly.')
+    }
+
+    const { token: copilotToken, endpoint: apiEndpoint } = await this.getCopilotSessionToken(
+      copilotConfig.apiKey,
+      copilotConfig.enterpriseUrl || undefined
+    )
+
+    const copilotProvider = createOpenAICompatible({
+      name: 'github-copilot',
+      apiKey: copilotToken,
+      baseURL: apiEndpoint,
+      headers: {
+        'Copilot-Integration-Id': 'vscode-chat',
+        'Editor-Version': 'Arion/1.0.0',
+        'x-github-api-version': '2025-05-01'
+      }
+    })
+
+    return copilotProvider.chatModel(model) as LanguageModel
+  }
+
+  private async getCopilotSessionToken(
+    githubToken: string,
+    enterpriseUrl?: string
+  ): Promise<{ token: string; endpoint: string }> {
+    const https = await import('https')
+
+    let hostname = 'api.github.com'
+    if (enterpriseUrl && enterpriseUrl.trim() !== '') {
+      try {
+        const url = new URL(enterpriseUrl)
+        hostname = `api.${url.hostname}`
+      } catch {
+        void 0
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = https.request(
+        {
+          hostname,
+          path: '/copilot_internal/v2/token',
+          method: 'GET',
+          headers: {
+            Authorization: `token ${githubToken}`,
+            Accept: 'application/json',
+            'User-Agent': 'Arion-App',
+            'Copilot-Integration-Id': 'vscode-chat',
+            'Editor-Version': 'Arion/1.0.0'
+          }
+        },
+        (response) => {
+          let body = ''
+          response.on('data', (chunk: Buffer) => {
+            body += chunk
+          })
+          response.on('end', () => {
+            try {
+              if (response.statusCode !== 200) {
+                reject(new Error(`Failed to get Copilot token: HTTP ${response.statusCode}`))
+                return
+              }
+
+              const parsed = JSON.parse(body) as {
+                token?: string
+                endpoints?: { api?: string }
+              }
+
+              if (!parsed.token) {
+                reject(new Error('No token in Copilot response'))
+                return
+              }
+
+              resolve({
+                token: parsed.token,
+                endpoint: parsed.endpoints?.api || 'https://api.githubcopilot.com'
+              })
+            } catch (error) {
+              reject(
+                new Error(
+                  `Failed to parse Copilot token response: ${error instanceof Error ? error.message : 'Unknown error'}`
+                )
+              )
+            }
+          })
+        }
+      )
+
+      request.on('error', reject)
+      request.end()
+    })
   }
 }

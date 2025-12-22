@@ -13,6 +13,8 @@ import {
   type VertexConfig,
   type VertexConfigForRenderer,
   type OllamaConfig,
+  type GithubCopilotConfig,
+  type GithubCopilotConfigForRenderer,
   type EmbeddingConfig,
   type LLMProviderType,
   type AllLLMConfigurationsForRenderer,
@@ -286,6 +288,10 @@ const ctgApi = {
       ipcRenderer.invoke(IpcChannels.setOllamaConfig, config),
     getOllamaConfig: (): Promise<OllamaConfig | null> =>
       ipcRenderer.invoke(IpcChannels.getOllamaConfig),
+    setGitHubCopilotConfig: (config: GithubCopilotConfig): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.setGitHubCopilotConfig, config),
+    getGitHubCopilotConfig: (): Promise<GithubCopilotConfigForRenderer | null> =>
+      ipcRenderer.invoke(IpcChannels.getGitHubCopilotConfig),
     setEmbeddingConfig: (config: EmbeddingConfig): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.setEmbeddingConfig, config),
     getEmbeddingConfig: (): Promise<EmbeddingConfig> =>
@@ -995,6 +1001,40 @@ const ctgApi = {
         if (!res.success) throw new Error(res.error || 'Failed to get available tools')
         return res.data
       })
+  },
+  github: {
+    requestDeviceCode: async (): Promise<{
+      success: boolean
+      deviceCode?: string
+      userCode?: string
+      verificationUri?: string
+      expiresIn?: number
+      error?: string
+    }> => {
+      try {
+        return await ipcRenderer.invoke('ctg:github:requestDeviceCode')
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      }
+    },
+    pollAccessToken: async (
+      deviceCode: string
+    ): Promise<{
+      success?: boolean
+      accessToken?: string
+      error?: string
+    }> => {
+      try {
+        return await ipcRenderer.invoke('ctg:github:pollAccessToken', deviceCode)
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      }
+    }
   },
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('ctg:get-app-version')
 }

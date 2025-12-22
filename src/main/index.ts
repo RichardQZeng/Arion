@@ -53,6 +53,7 @@ import {
 } from './ipc/layer-handlers'
 import { registerAgentIpcHandlers } from './ipc/agent-handlers'
 import { registerToolIpcHandlers } from './ipc/tool-handlers'
+import { registerGitHubHandlers } from './ipc/github-handlers'
 import { registerExternalRuntimeIpcHandlers } from './ipc/external-runtime-handlers'
 
 // Keep a reference to the service instance
@@ -368,7 +369,8 @@ async function initializeApplication(): Promise<void> {
     externalRuntimeRegistryInstance
   ) // Pass routing service, knowledge base, and layer db manager
   registerDbIpcHandlers(ipcMain, {
-    onDeleteChat: (chatId) => connectorExecutionRuntime.qgisProcessService.clearWorkflowsForChat(chatId)
+    onDeleteChat: (chatId) =>
+      connectorExecutionRuntime.qgisProcessService.clearWorkflowsForChat(chatId)
   })
   registerKnowledgeBaseIpcHandlers(ipcMain, knowledgeBaseServiceInstance)
   registerShellHandlers(ipcMain)
@@ -384,6 +386,7 @@ async function initializeApplication(): Promise<void> {
   registerVectorAssetProtocol(session.defaultSession)
   registerAgentIpcHandlers(ipcMain, agentRegistryServiceInstance, promptModuleServiceInstance)
   registerToolIpcHandlers(ipcMain, llmToolServiceInstance)
+  registerGitHubHandlers()
   // --- End IPC Handler Registration ---
 
   // --- Custom IPC Handlers ---

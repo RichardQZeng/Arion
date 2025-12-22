@@ -32,6 +32,7 @@ interface LLMStoreState {
   anthropicConfig: LLMConfig
   vertexConfig: LLMConfig
   ollamaConfig: LLMConfig
+  githubCopilotConfig: LLMConfig
   embeddingConfig: EmbeddingConfig
   activeProvider: LLMProvider | null
   isInitialized: boolean
@@ -50,6 +51,11 @@ interface LLMStoreState {
   setAnthropicConfig: (config: { apiKey: string; model: string }) => void
   setVertexConfig: (config: VertexConfig) => void
   setOllamaConfig: (config: OllamaConfig) => void
+  setGitHubCopilotConfig: (config: {
+    apiKey?: string
+    model: string
+    enterpriseUrl?: string
+  }) => void
   setEmbeddingConfig: (config: EmbeddingConfig) => void
   clearProviderConfig: (provider: NonNullable<LLMProvider>) => void
 }
@@ -78,20 +84,25 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
   anthropicConfig: { ...initialConfig },
   vertexConfig: { ...initialConfig },
   ollamaConfig: { ...initialConfig },
+  githubCopilotConfig: { ...initialConfig },
   embeddingConfig: { ...defaultEmbeddingConfig },
   activeProvider: null,
   isInitialized: false,
 
   isConfigured: (provider) => {
-    const configKey = `${provider}Config` as keyof Pick<
-      LLMStoreState,
-      | 'openaiConfig'
-      | 'googleConfig'
-      | 'azureConfig'
-      | 'anthropicConfig'
-      | 'vertexConfig'
-      | 'ollamaConfig'
-    >
+    const configKey =
+      provider === 'github-copilot'
+        ? 'githubCopilotConfig'
+        : (`${provider}Config` as keyof Pick<
+            LLMStoreState,
+            | 'openaiConfig'
+            | 'googleConfig'
+            | 'azureConfig'
+            | 'anthropicConfig'
+            | 'vertexConfig'
+            | 'ollamaConfig'
+            | 'githubCopilotConfig'
+          >)
     const config = get()[configKey] as LLMConfig
     if (!config) return false
 
@@ -160,6 +171,14 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
           anthropicConfig,
           vertexConfig,
           ollamaConfig: allConfigs.ollama || { ...initialConfig },
+          githubCopilotConfig: allConfigs.githubCopilot
+            ? {
+                ...initialConfig,
+                model: allConfigs.githubCopilot.model ?? null,
+                endpoint: allConfigs.githubCopilot.enterpriseUrl ?? null,
+                hasApiKey: allConfigs.githubCopilot.hasApiKey
+              }
+            : { ...initialConfig },
           embeddingConfig: allConfigs.embedding || { ...defaultEmbeddingConfig },
           activeProvider: allConfigs.activeProvider || null,
           isInitialized: true
@@ -180,8 +199,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
       const settings = window.ctg?.settings
       if (settings?.setActiveLLMProvider) {
         await settings.setActiveLLMProvider(provider)
-      } else {
-        void 0
       }
     } catch (err) {
       set({ activeProvider: oldActiveProvider })
@@ -217,8 +234,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('openai')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ openaiConfig: oldConfig, activeProvider: oldActiveProvider })
@@ -254,8 +269,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('google')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ googleConfig: oldConfig, activeProvider: oldActiveProvider })
@@ -296,8 +309,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('azure')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ azureConfig: oldConfig, activeProvider: oldActiveProvider })
@@ -333,8 +344,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('anthropic')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ anthropicConfig: oldConfig, activeProvider: oldActiveProvider })
@@ -379,8 +388,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('vertex')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ vertexConfig: oldConfig, activeProvider: oldActiveProvider })
@@ -411,11 +418,48 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
         if (becameActive && settings.setActiveLLMProvider) {
           await settings.setActiveLLMProvider('ollama')
         }
-      } else {
-        void 0
       }
     } catch (err) {
       set({ ollamaConfig: oldConfig, activeProvider: oldActiveProvider })
+      throw err
+    }
+  },
+
+  setGitHubCopilotConfig: async (config) => {
+    const oldConfig = get().githubCopilotConfig
+    const oldActiveProvider = get().activeProvider
+    let becameActive = false
+
+    set((state) => {
+      const newConfig = {
+        ...state.githubCopilotConfig,
+        apiKey: null,
+        model: config.model ?? state.githubCopilotConfig.model,
+        endpoint: config.enterpriseUrl ?? state.githubCopilotConfig.endpoint,
+        hasApiKey:
+          typeof config.apiKey === 'string'
+            ? config.apiKey.trim().length > 0
+            : state.githubCopilotConfig.hasApiKey === true
+      }
+      const shouldBecomeActive =
+        state.activeProvider === null && newConfig.hasApiKey && newConfig.model
+      if (shouldBecomeActive) becameActive = true
+      return {
+        githubCopilotConfig: newConfig,
+        activeProvider: shouldBecomeActive ? 'github-copilot' : state.activeProvider
+      }
+    })
+
+    try {
+      const settings = window.ctg?.settings
+      if (settings?.setGitHubCopilotConfig) {
+        await settings.setGitHubCopilotConfig(config)
+        if (becameActive && settings.setActiveLLMProvider) {
+          await settings.setActiveLLMProvider('github-copilot')
+        }
+      }
+    } catch (err) {
+      set({ githubCopilotConfig: oldConfig, activeProvider: oldActiveProvider })
       throw err
     }
   },
@@ -428,8 +472,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
       const settings = window.ctg?.settings
       if (settings?.setEmbeddingConfig) {
         await settings.setEmbeddingConfig(config)
-      } else {
-        void 0
       }
     } catch (err) {
       set({ embeddingConfig: oldConfig })
@@ -439,15 +481,19 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
 
   clearProviderConfig: (provider) =>
     set((state) => {
-      const configKey = `${provider}Config` as keyof Pick<
-        LLMStoreState,
-        | 'openaiConfig'
-        | 'googleConfig'
-        | 'azureConfig'
-        | 'anthropicConfig'
-        | 'vertexConfig'
-        | 'ollamaConfig'
-      >
+      const configKey =
+        provider === 'github-copilot'
+          ? 'githubCopilotConfig'
+          : (`${provider}Config` as keyof Pick<
+              LLMStoreState,
+              | 'openaiConfig'
+              | 'googleConfig'
+              | 'azureConfig'
+              | 'anthropicConfig'
+              | 'vertexConfig'
+              | 'ollamaConfig'
+              | 'githubCopilotConfig'
+            >)
       const newState: Partial<LLMStoreState> = {
         [configKey]: { ...initialConfig }
       }

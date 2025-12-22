@@ -9,6 +9,7 @@ import {
   McpServerConfig,
   VertexConfig,
   OllamaConfig,
+  GithubCopilotConfig,
   EmbeddingConfig,
   SystemPromptConfig,
   SkillPackConfig,
@@ -527,6 +528,30 @@ export function registerSettingsIpcHandlers(
   ipcMain.handle(IpcChannels.getOllamaConfig, async () => {
     try {
       return await settingsService.getOllamaConfig()
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle(
+    IpcChannels.setGitHubCopilotConfig,
+    async (_event, config: GithubCopilotConfig) => {
+      try {
+        if (config.apiKey === '' && config.model === '') {
+          await settingsService.clearGitHubCopilotConfig()
+        } else {
+          await settingsService.setGitHubCopilotConfig(config)
+        }
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  ipcMain.handle(IpcChannels.getGitHubCopilotConfig, async () => {
+    try {
+      return await settingsService.getGitHubCopilotConfigForRenderer()
     } catch {
       return null
     }

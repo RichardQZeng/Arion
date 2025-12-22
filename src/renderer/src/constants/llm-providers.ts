@@ -8,7 +8,8 @@ export const SUPPORTED_LLM_PROVIDERS: NonNullable<LLMProvider>[] = [
   'azure',
   'anthropic',
   'vertex', // Added vertex
-  'ollama' // Added ollama
+  'ollama', // Added ollama
+  'github-copilot'
 ]
 
 // Import the SVG logos
@@ -17,6 +18,7 @@ import googleLogo from '@/assets/llm-providers-logos/google.svg'
 import azureLogo from '@/assets/llm-providers-logos/azure.svg'
 import anthropicLogo from '@/assets/llm-providers-logos/anthropic.svg'
 import ollamaLogo from '@/assets/llm-providers-logos/ollama.svg'
+import githubCopilotLogo from '@/assets/llm-providers-logos/github-copilot.svg'
 
 // Map of provider IDs to their logos
 export const PROVIDER_LOGOS: Record<NonNullable<LLMProvider>, string> = {
@@ -25,7 +27,8 @@ export const PROVIDER_LOGOS: Record<NonNullable<LLMProvider>, string> = {
   azure: azureLogo,
   anthropic: anthropicLogo,
   vertex: googleLogo, // Using the same Google logo for Vertex AI as requested
-  ollama: ollamaLogo
+  ollama: ollamaLogo,
+  'github-copilot': githubCopilotLogo
 }
 
 // Extra CSS classes for provider logos (e.g. invert dark logos in dark mode)
@@ -35,7 +38,8 @@ export const PROVIDER_LOGO_CLASSES: Record<NonNullable<LLMProvider>, string> = {
   azure: '',
   anthropic: 'dark:invert',
   vertex: '',
-  ollama: 'dark:invert'
+  ollama: 'dark:invert',
+  'github-copilot': ''
 }
 
 // Provider card background colors
@@ -45,7 +49,8 @@ export const PROVIDER_BACKGROUNDS: Record<NonNullable<LLMProvider>, string> = {
   azure: 'bg-muted',
   anthropic: 'bg-muted',
   vertex: 'bg-muted',
-  ollama: 'bg-muted'
+  ollama: 'bg-muted',
+  'github-copilot': 'bg-muted'
 }
 
 // Define a generic config type that covers the properties used for naming
@@ -63,7 +68,8 @@ export const PROVIDER_CONFIG_KEYS: Record<NonNullable<LLMProvider>, string> = {
   azure: 'deploymentName',
   anthropic: 'model',
   vertex: 'model',
-  ollama: 'model'
+  ollama: 'model',
+  'github-copilot': 'model'
 }
 
 export const getFormattedProviderName = (
@@ -95,6 +101,9 @@ export const getFormattedProviderName = (
         break
       case 'ollama':
         name = `Ollama${config.model ? ` (${config.model})` : ''}`
+        break
+      case 'github-copilot':
+        name = `GitHub Copilot${config.model ? ` (${config.model})` : ''}`
         break
       // No default case needed as 'name' is already initialized
     }

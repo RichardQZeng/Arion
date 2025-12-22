@@ -17,6 +17,8 @@ import {
   VertexConfig,
   VertexConfigForRenderer,
   OllamaConfig,
+  GithubCopilotConfig,
+  GithubCopilotConfigForRenderer,
   EmbeddingConfig,
   LLMProviderType,
   AllLLMConfigurations,
@@ -160,6 +162,19 @@ export class SettingsService {
     return row || null
   }
 
+  async getGitHubCopilotConfig(): Promise<GithubCopilotConfig | null> {
+    const apiKey = await this.getApiKey('github-copilot')
+    const storedConfig = await this.getStoredConfig('github-copilot')
+    if (apiKey && storedConfig?.model) {
+      return {
+        apiKey,
+        model: storedConfig.model,
+        enterpriseUrl: storedConfig.endpoint || null
+      }
+    }
+    return null
+  }
+
   async getOpenAIConfig(): Promise<OpenAIConfig | null> {
     const apiKey = await this.getApiKey('openai')
     const storedConfig = await this.getStoredConfig('openai')
@@ -201,6 +216,16 @@ export class SettingsService {
       return { apiKey, model: storedConfig.model }
     }
     return null
+  }
+
+  async setGitHubCopilotConfig(config: GithubCopilotConfig): Promise<void> {
+    if (config.apiKey) {
+      await this.setApiKey('github-copilot', config.apiKey)
+    }
+    // Store model and enterpriseUrl in DB (endpoint field is used for enterpriseUrl)
+    this.db
+      .prepare('INSERT OR REPLACE INTO llm_configs (provider, model, endpoint) VALUES (?, ?, ?)')
+      .run('github-copilot', config.model || null, config.enterpriseUrl || null)
   }
 
   async getVertexConfig(): Promise<VertexConfig | null> {
@@ -265,17 +290,28 @@ export class SettingsService {
 
   // --- Get All Configs (for initial load) ---
   async getAllLLMConfigs(): Promise<AllLLMConfigurations> {
-    const [openai, google, azure, anthropic, vertex, ollama, embedding, activeProvider] =
-      await Promise.all([
-        this.getOpenAIConfig(),
-        this.getGoogleConfig(),
-        this.getAzureConfig(),
-        this.getAnthropicConfig(),
-        this.getVertexConfig(),
-        this.getOllamaConfig(),
-        this.getEmbeddingConfig(),
-        this.getActiveLLMProvider()
-      ])
+    const [
+      openai,
+      google,
+      azure,
+      anthropic,
+      vertex,
+      ollama,
+      githubCopilot,
+      embedding,
+      activeProvider
+    ] = await Promise.all([
+      this.getOpenAIConfig(),
+      this.getGoogleConfig(),
+      this.getAzureConfig(),
+      this.getAnthropicConfig(),
+      this.getVertexConfig(),
+      this.getOllamaConfig(),
+      this.getGitHubCopilotConfig(),
+      this.getEmbeddingConfig(),
+      this.getActiveLLMProvider()
+    ])
+
     const allConfigs: AllLLMConfigurations = {
       openai: openai || undefined,
       google: google || undefined,
@@ -283,11 +319,27 @@ export class SettingsService {
       anthropic: anthropic || undefined,
       vertex: vertex || undefined,
       ollama: ollama || undefined,
+      githubCopilot: githubCopilot || undefined,
       embedding,
       activeProvider: activeProvider || null
     }
-    //
+
     return allConfigs
+  }
+
+  async getGitHubCopilotConfigForRenderer(): Promise<GithubCopilotConfigForRenderer | null> {
+    const storedConfig = await this.getStoredConfig('github-copilot')
+    const hasApiKey = await this.hasApiKey('github-copilot')
+
+    if (!storedConfig?.model && !storedConfig?.endpoint && !hasApiKey) {
+      return null
+    }
+
+    return {
+      model: storedConfig?.model ?? null,
+      enterpriseUrl: storedConfig?.endpoint ?? null,
+      hasApiKey
+    }
   }
 
   async getOpenAIConfigForRenderer(): Promise<OpenAIConfigForRenderer | null> {
@@ -357,17 +409,27 @@ export class SettingsService {
   }
 
   async getAllLLMConfigsForRenderer(): Promise<AllLLMConfigurationsForRenderer> {
-    const [openai, google, azure, anthropic, vertex, ollama, embedding, activeProvider] =
-      await Promise.all([
-        this.getOpenAIConfigForRenderer(),
-        this.getGoogleConfigForRenderer(),
-        this.getAzureConfigForRenderer(),
-        this.getAnthropicConfigForRenderer(),
-        this.getVertexConfigForRenderer(),
-        this.getOllamaConfig(),
-        this.getEmbeddingConfig(),
-        this.getActiveLLMProvider()
-      ])
+    const [
+      openai,
+      google,
+      azure,
+      anthropic,
+      vertex,
+      ollama,
+      githubCopilot,
+      embedding,
+      activeProvider
+    ] = await Promise.all([
+      this.getOpenAIConfigForRenderer(),
+      this.getGoogleConfigForRenderer(),
+      this.getAzureConfigForRenderer(),
+      this.getAnthropicConfigForRenderer(),
+      this.getVertexConfigForRenderer(),
+      this.getOllamaConfig(),
+      this.getGitHubCopilotConfigForRenderer(),
+      this.getEmbeddingConfig(),
+      this.getActiveLLMProvider()
+    ])
 
     return {
       openai: openai || undefined,
@@ -376,6 +438,7 @@ export class SettingsService {
       anthropic: anthropic || undefined,
       vertex: vertex || undefined,
       ollama: ollama || undefined,
+      githubCopilot: githubCopilot || undefined,
       embedding,
       activeProvider: activeProvider || null
     }
@@ -500,6 +563,11 @@ export class SettingsService {
   async clearOllamaConfig(): Promise<void> {
     // No API key to delete from keytar for Ollama
     this.db.prepare('DELETE FROM llm_configs WHERE provider = ?').run('ollama')
+  }
+
+  async clearGitHubCopilotConfig(): Promise<void> {
+    await this.deleteApiKey('github-copilot')
+    this.db.prepare('DELETE FROM llm_configs WHERE provider = ?').run('github-copilot')
   }
 
   // --- System Prompt Configuration ---
