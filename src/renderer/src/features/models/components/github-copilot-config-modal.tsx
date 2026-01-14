@@ -121,8 +121,8 @@ export default function GitHubCopilotConfigModal({
             authToken: result.accessToken,
             userCode: deviceAuthState.userCode
           })
-          // Automatically save the token after getting it
-          handleSaveWithToken(result.accessToken)
+          // Transfer the token to the Existing Token tab
+          setExistingToken(result.accessToken)
           return
         }
 
@@ -155,6 +155,8 @@ export default function GitHubCopilotConfigModal({
   const handleSaveWithToken = (token: string): void => {
     if (token && model.trim()) {
       setGitHubCopilotConfig({ apiKey: token, model, enterpriseUrl })
+      setExistingToken(token)
+      setUseExistingAuth(true)
       setTimeout(() => {
         onClose()
       }, 1000)

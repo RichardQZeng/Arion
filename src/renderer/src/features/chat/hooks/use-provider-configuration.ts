@@ -34,6 +34,7 @@ export const useProviderConfiguration = (
     anthropicConfig,
     vertexConfig,
     ollamaConfig,
+    githubCopilotConfig,
     isConfigured,
     activeProvider,
     setActiveProvider,
@@ -77,6 +78,9 @@ export const useProviderConfiguration = (
         case 'ollama':
           providerConfig = ollamaConfig
           break
+        case 'github-copilot':
+          providerConfig = githubCopilotConfig
+          break
       }
 
       const name = getFormattedProviderName(providerId, providerConfig, configured)
@@ -106,7 +110,8 @@ export const useProviderConfiguration = (
     azureConfig,
     anthropicConfig,
     vertexConfig,
-    ollamaConfig
+    ollamaConfig,
+    githubCopilotConfig
   ])
 
   return {
