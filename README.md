@@ -217,3 +217,11 @@ Arion is free software released under the **GNU General Public License v3.0 or l
 - You may use, modify, and redistribute the project under the GPL terms (including commercial use).
 - Distributions and derivative works must provide source code and remain licensed under the GPL.
 - See the [LICENSE](./LICENSE) file for the complete text and guidance on applying the GPL to your changes.
+
+## Running Tests
+
+```bash
+npx jest
+```
+
+Tests are located in the `tests/` directory.
