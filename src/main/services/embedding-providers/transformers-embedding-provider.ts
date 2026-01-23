@@ -14,6 +14,13 @@ import {
   getModelDimensions
 } from './embedding-provider'
 
+const DEBUG = process.env.NODE_ENV === 'development'
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args)
+  }
+}
+
 // Dynamic import to avoid loading transformers.js until needed
 type Pipeline = Awaited<ReturnType<(typeof import('@xenova/transformers'))['pipeline']>>
 
@@ -27,7 +34,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
   private isLoading = false
 
   constructor(config: EmbeddingProviderConfig) {
-    console.log(
+    debugLog(
       '[TransformersEmbeddingProvider] Constructor called:',
       config.model || 'Xenova/all-MiniLM-L6-v2'
     )
@@ -42,7 +49,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
 
     this.isLoading = true
     try {
-      console.log(`[TransformersEmbeddingProvider] Loading model: ${this.model}`)
+      debugLog(`[TransformersEmbeddingProvider] Loading model: ${this.model}`)
 
       // Dynamic import of @xenova/transformers
       const { pipeline } = await import('@xenova/transformers')
@@ -57,16 +64,16 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
       // Ensure cache directory exists before setting it
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true })
-        console.log('[TransformersEmbeddingProvider] Created cache directory:', cacheDir)
+        debugLog('[TransformersEmbeddingProvider] Created cache directory:', cacheDir)
       }
 
       env.cacheDir = cacheDir
-      console.log('[TransformersEmbeddingProvider] Using model cache directory:', cacheDir)
+      debugLog('[TransformersEmbeddingProvider] Using model cache directory:', cacheDir)
 
       // List cache directory files before pipeline load
       try {
         const files = fs.readdirSync(cacheDir)
-        console.log('[TransformersEmbeddingProvider] Cache contains:', files)
+        debugLog('[TransformersEmbeddingProvider] Cache contains:', files)
       } catch (e) {
         console.warn('[TransformersEmbeddingProvider] Could not list cache dir:', e)
       }
@@ -77,10 +84,12 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
           // Use quantized models for faster loading and inference
           quantized: true
         })
-        console.log(`[TransformersEmbeddingProvider] Model loaded: ${this.model}`)
+        debugLog(`[TransformersEmbeddingProvider] Model loaded: ${this.model}`)
       } catch (error) {
         console.error('[TransformersEmbeddingProvider] Model load error (full object):', error)
-        if (error && error.stack) console.error(error.stack)
+        if (error instanceof Error && error.stack) {
+          console.error(error.stack)
+        }
         throw error
       }
     } catch (error) {
@@ -96,7 +105,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
       // @xenova/transformers pipelines don't have an explicit dispose method
       // but we can clear the reference to allow garbage collection
       this.pipeline = undefined
-      console.log(`[TransformersEmbeddingProvider] Model unloaded: ${this.model}`)
+      debugLog(`[TransformersEmbeddingProvider] Model unloaded: ${this.model}`)
     }
   }
 
@@ -118,13 +127,13 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
       return []
     }
 
-    console.log(`[TransformersEmbeddingProvider] embedMany called with ${texts.length} texts`)
+    debugLog(`[TransformersEmbeddingProvider] embedMany called with ${texts.length} texts`)
     const results: number[][] = []
 
     // Process in batches to manage memory
     for (let i = 0; i < texts.length; i += this.maxBatchSize) {
       const batch = texts.slice(i, i + this.maxBatchSize)
-      console.log(
+      debugLog(
         `[TransformersEmbeddingProvider] Processing batch ${i / this.maxBatchSize + 1}, size: ${batch.length}`
       )
 
@@ -134,10 +143,10 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
         normalize: true
       })
 
-      console.log(
+      debugLog(
         `[TransformersEmbeddingProvider] Output type: ${typeof output}, isArray: ${Array.isArray(output)}`
       )
-      console.log(
+      debugLog(
         `[TransformersEmbeddingProvider] Output keys: ${output ? Object.keys(output) : 'null'}`
       )
 
@@ -145,7 +154,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
       if (output && output.dims && output.data) {
         const dims = output.dims as number[]
         const data = output.data as Float32Array
-        console.log(
+        debugLog(
           `[TransformersEmbeddingProvider] Tensor dims: ${JSON.stringify(dims)}, data length: ${data.length}`
         )
 
@@ -174,7 +183,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
       }
     }
 
-    console.log(`[TransformersEmbeddingProvider] embedMany returning ${results.length} embeddings`)
+    debugLog(`[TransformersEmbeddingProvider] embedMany returning ${results.length} embeddings`)
     return results
   }
 
