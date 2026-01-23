@@ -5,6 +5,9 @@
 import type { EmbeddingProviderType } from '../../../shared/ipc-types'
 import { EMBEDDING_MODELS } from '../../../shared/embedding-models'
 
+// Re-export for use by other modules
+export { EMBEDDING_MODELS }
+
 // Import logos (reuse existing where possible)
 import openaiLogo from '@/assets/llm-providers-logos/openai.svg'
 import ollamaLogo from '@/assets/llm-providers-logos/ollama.svg'
