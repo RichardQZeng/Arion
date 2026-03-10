@@ -188,6 +188,17 @@ export interface OllamaConfig {
   model?: string | null
 }
 
+export interface GithubCopilotConfig {
+  apiKey?: string | null
+  model?: string | null
+  enterpriseUrl?: string | null
+}
+
+export interface GithubCopilotConfigForRenderer {
+  model?: string | null
+  enterpriseUrl?: string | null
+  hasApiKey: boolean
+}
 export interface EmbeddingConfig {
   provider: EmbeddingProviderType
   model: string
@@ -224,18 +235,6 @@ export interface McpServerTestResult {
   serverName?: string
   serverVersion?: string
   tools?: McpToolPreview[]
-}
-
-export interface GithubCopilotConfig {
-  apiKey?: string | null
-  model?: string | null
-  enterpriseUrl?: string | null // For GitHub Enterprise support
-}
-
-export interface GithubCopilotConfigForRenderer {
-  model?: string | null
-  enterpriseUrl?: string | null
-  hasApiKey: boolean
 }
 
 export type LLMConfigData =

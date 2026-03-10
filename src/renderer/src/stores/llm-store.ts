@@ -115,6 +115,9 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
     if (provider === 'ollama') {
       return !!(config.baseURL && config.model)
     }
+    if (provider === 'github-copilot') {
+      return !!(config.hasApiKey && config.model)
+    }
     return !!(config.hasApiKey && config.model)
   },
 
@@ -163,7 +166,6 @@ export const useLLMStore = create<LLMStoreState>((set, get) => ({
               hasApiKey: allConfigs.vertex.hasApiKey
             }
           : { ...initialConfig }
-
         set({
           openaiConfig,
           googleConfig,

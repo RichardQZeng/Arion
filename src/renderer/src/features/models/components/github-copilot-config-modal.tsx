@@ -44,15 +44,17 @@ export default function GitHubCopilotConfigModal({
   const [copied, setCopied] = useState(false)
   const [existingToken, setExistingToken] = useState('')
   const [useExistingAuth, setUseExistingAuth] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
       setModel(githubCopilotConfig.model || '')
-      setEnterpriseUrl(githubCopilotConfig.enterpriseUrl || '')
-      setExistingToken(githubCopilotConfig.apiKey || '')
-      setUseExistingAuth(!!githubCopilotConfig.apiKey)
+      setEnterpriseUrl(githubCopilotConfig.endpoint || '')
+      setExistingToken('')
+      setUseExistingAuth(Boolean(githubCopilotConfig.hasApiKey))
       setDeviceAuthState({ step: 'idle' })
       setCopied(false)
+      setSaveError(null)
     }
   }, [githubCopilotConfig, isOpen])
 
@@ -81,7 +83,9 @@ export default function GitHubCopilotConfigModal({
         })
 
         // Start polling for authorization
-        pollForAuthorization(result.deviceCode, result.expiresIn || 900)
+        if (result.deviceCode) {
+          pollForAuthorization(result.deviceCode, result.expiresIn || 900)
+        }
       } else {
         setDeviceAuthState({
           step: 'error',
@@ -152,21 +156,38 @@ export default function GitHubCopilotConfigModal({
     doPoll()
   }
 
-  const handleSaveWithToken = (token: string): void => {
+  const handleSaveWithToken = async (token: string): Promise<void> => {
     if (token && model.trim()) {
-      setGitHubCopilotConfig({ apiKey: token, model, enterpriseUrl })
-      setExistingToken(token)
-      setUseExistingAuth(true)
-      setTimeout(() => {
-        onClose()
-      }, 1000)
+      try {
+        setSaveError(null)
+        await setGitHubCopilotConfig({ apiKey: token, model, enterpriseUrl })
+        setExistingToken(token)
+        setUseExistingAuth(true)
+        setTimeout(() => {
+          onClose()
+        }, 1000)
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
+      }
     }
   }
 
-  const handleSaveExisting = (): void => {
-    if (existingToken.trim() && model.trim()) {
-      setGitHubCopilotConfig({ apiKey: existingToken, model, enterpriseUrl })
-      onClose()
+  const handleSaveExisting = async (): Promise<void> => {
+    const token = existingToken.trim()
+    const hasStoredToken = githubCopilotConfig.hasApiKey === true
+
+    if ((token || hasStoredToken) && model.trim()) {
+      try {
+        setSaveError(null)
+        await setGitHubCopilotConfig({
+          apiKey: token || undefined,
+          model,
+          enterpriseUrl
+        })
+        onClose()
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
+      }
     }
   }
 
@@ -225,7 +246,8 @@ export default function GitHubCopilotConfigModal({
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Use GitHub's device code flow for secure authentication. No need to copy-paste tokens.
+                      Use GitHub's device code flow for secure authentication. No need to copy-paste
+                      tokens.
                     </AlertDescription>
                   </Alert>
                   <Button onClick={requestDeviceCode} className="w-full" size="lg">
@@ -273,11 +295,7 @@ export default function GitHubCopilotConfigModal({
                         size="sm"
                         className="px-3"
                       >
-                        {copied ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
+                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
@@ -286,7 +304,8 @@ export default function GitHubCopilotConfigModal({
                     <div className="text-center">
                       <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary mb-2"></div>
                       <p className="text-sm text-muted-foreground">
-                        Waiting for authorization... (expires in {Math.max(0, Math.round((deviceAuthState.expiresIn || 0) / 60))} min)
+                        Waiting for authorization... (expires in{' '}
+                        {Math.max(0, Math.round((deviceAuthState.expiresIn || 0) / 60))} min)
                       </p>
                     </div>
                   </div>
@@ -335,9 +354,22 @@ export default function GitHubCopilotConfigModal({
                 placeholder="ghu_..."
               />
               <p className="text-xs text-muted-foreground">
-                Paste your GitHub Copilot token here. Format: <code>ghu_...</code>
+                Paste your GitHub Copilot token here. Format: <code>ghu_...</code>. Leave blank to
+                keep your saved token.
               </p>
+              {githubCopilotConfig.hasApiKey && (
+                <p className="text-xs text-emerald-600">
+                  A token is already saved on this machine.
+                </p>
+              )}
             </div>
+          )}
+
+          {saveError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{saveError}</AlertDescription>
+            </Alert>
           )}
 
           {/* Model Selection (always visible) */}
@@ -352,7 +384,8 @@ export default function GitHubCopilotConfigModal({
               placeholder="e.g., gpt-4o, gpt-4-turbo"
             />
             <p className="text-xs text-muted-foreground">
-              Examples: <code>gpt-4o</code>, <code>gpt-4-turbo</code>, <code>claude-3-5-sonnet</code>
+              Examples: <code>gpt-4o</code>, <code>gpt-4-turbo</code>,{' '}
+              <code>claude-3-5-sonnet</code>
             </p>
           </div>
 
@@ -380,7 +413,9 @@ export default function GitHubCopilotConfigModal({
           {useExistingAuth && (
             <Button
               onClick={handleSaveExisting}
-              disabled={!existingToken.trim() || !model.trim()}
+              disabled={
+                (!existingToken.trim() && githubCopilotConfig.hasApiKey !== true) || !model.trim()
+              }
             >
               Save Configuration
             </Button>

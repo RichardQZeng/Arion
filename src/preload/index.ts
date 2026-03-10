@@ -288,8 +288,16 @@ const ctgApi = {
       ipcRenderer.invoke(IpcChannels.setOllamaConfig, config),
     getOllamaConfig: (): Promise<OllamaConfig | null> =>
       ipcRenderer.invoke(IpcChannels.getOllamaConfig),
-    setGitHubCopilotConfig: (config: GithubCopilotConfig): Promise<void> =>
-      ipcRenderer.invoke(IpcChannels.setGitHubCopilotConfig, config),
+    setGitHubCopilotConfig: async (config: GithubCopilotConfig): Promise<void> => {
+      const response = (await ipcRenderer.invoke(IpcChannels.setGitHubCopilotConfig, config)) as {
+        success?: boolean
+        error?: string
+      }
+
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to save GitHub Copilot configuration')
+      }
+    },
     getGitHubCopilotConfig: (): Promise<GithubCopilotConfigForRenderer | null> =>
       ipcRenderer.invoke(IpcChannels.getGitHubCopilotConfig),
     setEmbeddingConfig: (config: EmbeddingConfig): Promise<void> =>
