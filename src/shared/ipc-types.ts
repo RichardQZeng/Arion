@@ -123,7 +123,6 @@ export type EmbeddingProviderType =
   | 'vertex'
   | 'azure'
   | 'ollama'
-  | 'github-copilot'
 
 export interface OpenAIConfig {
   apiKey: string
@@ -731,6 +730,22 @@ export interface SettingsApi {
   getCodexHealth: () => Promise<CodexHealthStatus>
 }
 
+export interface GitHubApi {
+  requestDeviceCode: () => Promise<{
+    success: boolean
+    deviceCode?: string
+    userCode?: string
+    verificationUri?: string
+    expiresIn?: number
+    error?: string
+  }>
+  pollAccessToken: (deviceCode: string) => Promise<{
+    success?: boolean
+    accessToken?: string
+    error?: string
+  }>
+}
+
 // Type for the Chat API arguments and return type
 export interface ChatReasoningConfig {
   effort?: ReasoningEffort
@@ -1018,6 +1033,7 @@ declare global {
       agents: AgentApi // Added Agent System API
       promptModules: PromptModuleApi // Added Prompt Module API
       tools: ToolsApi // Added Tools API
+      github: GitHubApi
       getAppVersion: () => Promise<string>
     }
   }

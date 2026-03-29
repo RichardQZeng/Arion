@@ -54,8 +54,15 @@ const AgentEditorModal: React.FC<AgentEditorModalProps> = ({ agentId, isOpen, on
   const { getAgentById, updateAgent, agents } = useAgentStore()
 
   // Access LLM store for provider and model information
-  const { openaiConfig, googleConfig, anthropicConfig, azureConfig, vertexConfig, ollamaConfig } =
-    useLLMStore()
+  const {
+    openaiConfig,
+    googleConfig,
+    anthropicConfig,
+    azureConfig,
+    vertexConfig,
+    ollamaConfig,
+    githubCopilotConfig
+  } = useLLMStore()
 
   // State to hold full agent details for tool checking (excluding current agent)
   const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([])
@@ -251,7 +258,8 @@ const AgentEditorModal: React.FC<AgentEditorModalProps> = ({ agentId, isOpen, on
       anthropic: anthropicConfig,
       azure: azureConfig,
       vertex: vertexConfig,
-      ollama: ollamaConfig
+      ollama: ollamaConfig,
+      'github-copilot': githubCopilotConfig
     }
 
     const config = configMap[agent.modelConfig.provider as NonNullable<LLMProviderType>]
