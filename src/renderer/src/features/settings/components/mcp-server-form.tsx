@@ -1,10 +1,14 @@
 import React from 'react'
-import { McpServerConfig, McpServerTestResult } from '../../../../../shared/ipc-types'
+import {
+  McpServerConfig,
+  McpServerRuntimeStatus,
+  McpServerTestResult
+} from '../../../../../shared/ipc-types'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { HelpTooltip } from '@/components/ui/help-tooltip'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
@@ -13,18 +17,21 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { HelpTooltip } from '@/components/ui/help-tooltip'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
 interface McpServerFormProps {
   editingConfig: McpServerConfig | Omit<McpServerConfig, 'id'>
   inputMode: 'form' | 'json'
   connectionType: 'stdio' | 'http'
   jsonString: string
+  layout?: 'inline' | 'dialog'
   isEditingExistingServer: boolean
   isLoading: boolean
   isTesting: boolean
+  runtimeStatus: McpServerRuntimeStatus | null
   testResult: McpServerTestResult | null
-  onToggleInputMode: () => void
+  onInputModeChange: (value: 'form' | 'json') => void
   onConnectionTypeChange: (value: 'stdio' | 'http') => void
   onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
   onJsonInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
@@ -39,11 +46,13 @@ export function McpServerForm({
   inputMode,
   connectionType,
   jsonString,
+  layout = 'inline',
   isEditingExistingServer,
   isLoading,
   isTesting,
+  runtimeStatus,
   testResult,
-  onToggleInputMode,
+  onInputModeChange,
   onConnectionTypeChange,
   onInputChange,
   onJsonInputChange,
@@ -53,15 +62,45 @@ export function McpServerForm({
   onTest
 }: McpServerFormProps): React.JSX.Element {
   const currentArgsString = Array.isArray(editingConfig.args) ? editingConfig.args.join(', ') : ''
+  const runtimeStatusLabel = runtimeStatus
+    ? {
+        connected: 'Connected',
+        connecting: 'Connecting',
+        disabled: 'Disabled',
+        error: 'Error'
+      }[runtimeStatus.state]
+    : null
+  const runtimeStatusClasses = runtimeStatus
+    ? {
+        connected: 'border-green-200 bg-green-50 text-green-900',
+        connecting: 'border-sky-200 bg-sky-50 text-sky-900',
+        disabled: 'border-border/60 bg-muted/40 text-muted-foreground',
+        error: 'border-red-200 bg-red-50 text-red-900'
+      }[runtimeStatus.state]
+    : null
 
   return (
-    <div className="p-4 rounded-md mt-4 space-y-4 surface-elevated">
-      <h3 className="text-lg font-semibold">
-        {isEditingExistingServer ? 'Edit' : 'Add New'} MCP Server Configuration
-      </h3>
-      <Button onClick={onToggleInputMode} variant="outline" className="mb-4">
-        Switch to {inputMode === 'form' ? 'JSON' : 'Form'} Input
-      </Button>
+    <div
+      className={
+        layout === 'dialog' ? 'space-y-4' : 'mt-4 space-y-4 rounded-md p-4 surface-elevated'
+      }
+    >
+      {layout === 'inline' && (
+        <h3 className="text-lg font-semibold">
+          {isEditingExistingServer ? 'Edit' : 'Add'} MCP Server Configuration
+        </h3>
+      )}
+
+      <Tabs
+        value={inputMode}
+        onValueChange={(value) => onInputModeChange(value as 'form' | 'json')}
+        className="gap-4"
+      >
+        <TabsList className="grid w-full grid-cols-2 sm:w-56">
+          <TabsTrigger value="form">Form</TabsTrigger>
+          <TabsTrigger value="json">JSON</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {inputMode === 'form' ? (
         <>
@@ -155,6 +194,7 @@ export function McpServerForm({
                   as separate processes.
                 </p>
               </div>
+
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Label htmlFor="argsString">Command Arguments</Label>
@@ -260,6 +300,51 @@ export function McpServerForm({
         </div>
       )}
 
+      {runtimeStatus && (
+        <div className={`rounded-md border p-3 ${runtimeStatusClasses}`}>
+          <p className="font-semibold">
+            Saved server status: {runtimeStatusLabel}
+            {runtimeStatus.serverName ? ` - ${runtimeStatus.serverName}` : ''}
+            {runtimeStatus.serverVersion ? ` v${runtimeStatus.serverVersion}` : ''}
+          </p>
+
+          {runtimeStatus.state === 'connected' && (
+            <p className="text-sm mt-1 text-muted-foreground">
+              {runtimeStatus.toolCount === 1
+                ? '1 tool is currently available from this server.'
+                : `${runtimeStatus.toolCount ?? 0} tools are currently available from this server.`}
+            </p>
+          )}
+
+          {runtimeStatus.state === 'connecting' && (
+            <p className="text-sm mt-1 text-muted-foreground">
+              Arion is starting this server and discovering its tools.
+            </p>
+          )}
+
+          {runtimeStatus.state === 'disabled' && (
+            <p className="text-sm mt-1 text-muted-foreground">
+              This saved server is disabled, so it will not be started.
+            </p>
+          )}
+
+          {runtimeStatus.state === 'error' && runtimeStatus.error && (
+            <p className="text-sm mt-1">{runtimeStatus.error}</p>
+          )}
+
+          {runtimeStatus.detail && (
+            <details className="mt-2">
+              <summary className="cursor-pointer select-none text-sm font-medium">
+                View runtime details
+              </summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-background/80 p-2 font-mono text-[11px] leading-4 text-foreground/80">
+                {runtimeStatus.detail}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+
       {testResult && (
         <div
           className={`rounded-md border p-3 ${
@@ -270,10 +355,20 @@ export function McpServerForm({
         >
           <p className="font-semibold">
             {testResult.success ? 'Connection successful' : 'Connection failed'}
-            {testResult.serverName ? ` • ${testResult.serverName}` : ''}
+            {testResult.serverName ? ` - ${testResult.serverName}` : ''}
             {testResult.serverVersion ? ` v${testResult.serverVersion}` : ''}
           </p>
           {testResult.error && <p className="text-sm mt-1">{testResult.error}</p>}
+          {testResult.details && (
+            <details className="mt-2">
+              <summary className="cursor-pointer select-none text-sm font-medium">
+                View test details
+              </summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-background/80 p-2 font-mono text-[11px] leading-4 text-foreground/80">
+                {testResult.details}
+              </pre>
+            </details>
+          )}
           {testResult.tools && testResult.tools.length > 0 && (
             <p className="text-sm mt-1 text-muted-foreground">
               Discovered tools ({testResult.tools.length}):{' '}
@@ -281,7 +376,7 @@ export function McpServerForm({
                 .slice(0, 5)
                 .map((tool) => tool.name)
                 .join(', ')}
-              {testResult.tools.length > 5 ? '…' : ''}
+              {testResult.tools.length > 5 ? '...' : ''}
             </p>
           )}
           {testResult.success && (!testResult.tools || testResult.tools.length === 0) && (

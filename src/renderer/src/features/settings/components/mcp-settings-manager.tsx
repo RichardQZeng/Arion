@@ -1,11 +1,24 @@
-import React, { useEffect, useState } from 'react'
-import { McpServerConfig, McpServerTestResult } from '../../../../../shared/ipc-types'
+import React, { useCallback, useEffect, useState } from 'react'
+import {
+  McpServerConfig,
+  McpServerRuntimeStatus,
+  McpServerTestResult
+} from '../../../../../shared/ipc-types'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import { McpServerForm } from './mcp-server-form'
 import { buildNormalizedConfig } from './mcp-config-utils'
-import { Trash2, Edit } from 'lucide-react'
+import { AlertCircle, Boxes, CheckCircle2, ChevronDown, Edit, Loader2, PlugZap, Trash2 } from 'lucide-react'
 
 // Default empty state for a new/editing config
 const initialFormState: Omit<McpServerConfig, 'id'> = {
@@ -16,8 +29,31 @@ const initialFormState: Omit<McpServerConfig, 'id'> = {
   enabled: true
 }
 
-export function McpSettingsManager(): React.JSX.Element {
+export interface McpSettingsManagerControls {
+  canAddNew: boolean
+  canRefresh: boolean
+  onAddNew: () => void
+  onRefresh: () => void
+}
+
+interface McpSettingsManagerProps {
+  onControlsChange?: (controls: McpSettingsManagerControls) => void
+}
+
+function indexRuntimeStatuses(
+  statuses: McpServerRuntimeStatus[]
+): Record<string, McpServerRuntimeStatus> {
+  return statuses.reduce<Record<string, McpServerRuntimeStatus>>((result, status) => {
+    result[status.serverId] = status
+    return result
+  }, {})
+}
+
+export function McpSettingsManager({
+  onControlsChange
+}: McpSettingsManagerProps = {}): React.JSX.Element {
   const [configs, setConfigs] = useState<McpServerConfig[]>([])
+  const [runtimeStatuses, setRuntimeStatuses] = useState<Record<string, McpServerRuntimeStatus>>({})
   const [editingConfig, setEditingConfig] = useState<
     McpServerConfig | Omit<McpServerConfig, 'id'> | null
   >(null)
@@ -32,22 +68,37 @@ export function McpSettingsManager(): React.JSX.Element {
   const [connectionType, setConnectionType] = useState<'stdio' | 'http'>('stdio')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [serverToDelete, setServerToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [togglingServerId, setTogglingServerId] = useState<string | null>(null)
 
   const loadConfigs = async (): Promise<void> => {
     setIsLoading(true)
     setError(null)
     try {
-      const fetchedConfigs = await window.ctg.settings.getMcpServerConfigs()
+      const [fetchedConfigs, fetchedStatuses] = await Promise.all([
+        window.ctg.settings.getMcpServerConfigs(),
+        window.ctg.settings.getMcpServerRuntimeStatuses()
+      ])
       setConfigs(fetchedConfigs || [])
+      setRuntimeStatuses(indexRuntimeStatuses(fetchedStatuses || []))
     } catch {
       setError('Failed to load configurations.')
-      setConfigs([]) // Ensure configs is an array on error
+      setConfigs([])
+      setRuntimeStatuses({})
     }
     setIsLoading(false)
   }
 
   useEffect(() => {
     loadConfigs()
+  }, [])
+
+  useEffect(() => {
+    return window.ctg.settings.onMcpServerRuntimeStatusUpdated((status) => {
+      setRuntimeStatuses((previousStatuses) => ({
+        ...previousStatuses,
+        [status.serverId]: status
+      }))
+    })
   }, [])
 
   const handleInputChange = (
@@ -204,7 +255,7 @@ export function McpSettingsManager(): React.JSX.Element {
     setIsTesting(false)
   }
 
-  const handleAddNew = (): void => {
+  const handleAddNew = useCallback((): void => {
     setEditingConfig({ ...initialFormState })
     setIsEditingExistingServer(false)
     setEditedServerId(null)
@@ -213,7 +264,8 @@ export function McpSettingsManager(): React.JSX.Element {
     setConnectionType('stdio')
     setError(null)
     setTestResult(null)
-  }
+    setIsTesting(false)
+  }, [])
 
   const handleConnectionTypeChange = (value: 'stdio' | 'http'): void => {
     setConnectionType(value)
@@ -286,44 +338,45 @@ export function McpSettingsManager(): React.JSX.Element {
     }
   }
 
-  const toggleInputMode = (): void => {
-    if (inputMode === 'form') {
-      // Switching FROM Form TO JSON
-      // jsonString should be updated based on the current editingConfig state
-      if (editingConfig) {
-        setJsonString(JSON.stringify(editingConfig, null, 2))
-      } else {
-        // If no active form, show initial state in JSON
-        setJsonString(JSON.stringify(initialFormState, null, 2))
+  const handleInputModeChange = useCallback(
+    (nextInputMode: 'form' | 'json'): void => {
+      if (nextInputMode === inputMode) {
+        return
       }
-      setInputMode('json')
-    } else {
-      // Switching FROM JSON TO Form
+
+      if (nextInputMode === 'json') {
+        // Keep the JSON editor seeded from the latest form state before switching views.
+        if (editingConfig) {
+          setJsonString(JSON.stringify(editingConfig, null, 2))
+        } else {
+          setJsonString(JSON.stringify(initialFormState, null, 2))
+        }
+        setInputMode('json')
+        return
+      }
+
       try {
         const parsedJson = JSON.parse(jsonString)
         if (isEditingExistingServer && editingConfig && 'id' in editingConfig) {
-          // Editing existing: preserve original ID from editingConfig, take other fields from JSON.
-          // User might have changed other fields in JSON, or even tried to change the ID. We ignore ID changes from JSON for an existing item.
+          // Preserve the existing record id even if the JSON payload includes one.
           const dataFromUserJson = { ...parsedJson }
           delete dataFromUserJson.id
           setEditingConfig({ ...dataFromUserJson, id: editingConfig.id })
         } else {
-          // Adding new: strip any ID from JSON before setting editingConfig.
           const newConfigData = { ...parsedJson }
           delete newConfigData.id
           setEditingConfig(newConfigData)
-          // isEditingExistingServer should already be false if we are in "add new" flow.
         }
-        setError(null) // Clear JSON parse errors
+        setError(null)
         setInputMode('form')
       } catch {
         setError('Cannot switch to form mode: Invalid JSON content. Form fields may not update.')
-        // Optionally, do not switch mode if JSON is invalid: return;
       }
-    }
-  }
+    },
+    [editingConfig, inputMode, isEditingExistingServer, jsonString]
+  )
 
-  const handleCancel = (): void => {
+  const handleCancel = useCallback((): void => {
     setEditingConfig(null)
     setIsEditingExistingServer(false)
     setEditedServerId(null)
@@ -334,140 +387,138 @@ export function McpSettingsManager(): React.JSX.Element {
     setIsTesting(false)
     // Consider resetting inputMode to 'form' or leave as is.
     // Leaving as is allows canceling from JSON view without forcing back to form.
+  }, [])
+
+  const handleToggleEnabled = async (config: McpServerConfig): Promise<void> => {
+    setError(null)
+    setTestResult(null)
+    setTogglingServerId(config.id)
+
+    try {
+      const updatedConfig = await window.ctg.settings.updateMcpServerConfig(config.id, {
+        enabled: !config.enabled
+      })
+
+      if (updatedConfig) {
+        setConfigs((previousConfigs) =>
+          previousConfigs.map((currentConfig) =>
+            currentConfig.id === updatedConfig.id ? updatedConfig : currentConfig
+          )
+        )
+      } else {
+        await loadConfigs()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update configuration.')
+      await loadConfigs()
+    } finally {
+      setTogglingServerId(null)
+    }
   }
 
-  return (
-    <div className="px-2 sm:px-4 pt-4 pb-4 max-w-4xl">
-      <h2 className="text-xl font-semibold mb-4">Manage MCP Server Configurations</h2>
-      {error && <p className="text-red-500 bg-red-100 p-2 rounded-md">Error: {error}</p>}
-      <Button onClick={handleAddNew} disabled={!!editingConfig || isLoading}>
-        Add New MCP Server
-      </Button>
+  const handleRefresh = useCallback((): void => {
+    void loadConfigs()
+  }, [])
 
-      {editingConfig && !isEditingExistingServer && !editedServerId && (
-        <div className="mt-4">
-          <McpServerForm
-            editingConfig={editingConfig}
-            inputMode={inputMode}
-            connectionType={connectionType}
-            jsonString={jsonString}
-            isEditingExistingServer={isEditingExistingServer}
-            isLoading={isLoading}
-            isTesting={isTesting}
-            testResult={testResult}
-            onToggleInputMode={toggleInputMode}
-            onConnectionTypeChange={handleConnectionTypeChange}
-            onInputChange={handleInputChange}
-            onJsonInputChange={handleJsonInputChange}
-            onEnabledChange={handleEnabledChange}
-            onSave={handleSave}
-            onCancel={handleCancel}
-            onTest={handleTestConnection}
-          />
+  const hasPendingNewServer = !!(editingConfig && !isEditingExistingServer && !editedServerId)
+  const canAddNew = !(!!editingConfig || isLoading)
+  const canRefresh = !isLoading
+  const isEditorOpen = !!editingConfig
+  const isEditorBusy = isLoading || isTesting
+  const editorTitle = isEditingExistingServer ? 'Edit MCP Server' : 'Add MCP Server'
+  const editorDescription = isEditingExistingServer
+    ? 'Update this MCP server configuration and save your changes.'
+    : 'Create a new MCP server configuration for your agents.'
+  const editingRuntimeStatus =
+    isEditingExistingServer && editingConfig && 'id' in editingConfig
+      ? runtimeStatuses[editingConfig.id] || null
+      : null
+
+  const handleEditorOpenChange = useCallback(
+    (open: boolean): void => {
+      if (!open && !isEditorBusy) {
+        handleCancel()
+      }
+    },
+    [handleCancel, isEditorBusy]
+  )
+
+  useEffect(() => {
+    onControlsChange?.({
+      canAddNew,
+      canRefresh,
+      onAddNew: handleAddNew,
+      onRefresh: handleRefresh
+    })
+  }, [canAddNew, canRefresh, handleAddNew, handleRefresh, onControlsChange])
+
+  return (
+    <div className="w-full">
+      {error && <p className="text-red-500 bg-red-100 p-2 rounded-md">Error: {error}</p>}
+
+      {isLoading && !configs.length && !editingConfig && (
+        <div className="w-full flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       )}
 
-      {isLoading && !configs.length && !editingConfig && <p>Loading configurations...</p>}
+      <div className="w-full">
+        {configs.length === 0 && !isLoading && !error && !editingConfig && (
+          <div className="w-full text-center py-12 border border-dashed rounded-lg">
+            <Boxes className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-muted-foreground mb-1">No MCP server configurations found</p>
+            <p className="text-sm text-muted-foreground">
+              Add a server to start exposing external tools to your AI agents.
+            </p>
+          </div>
+        )}
 
-      <ScrollArea className="mt-6 max-h-[60vh] pr-4">
-        <div className="space-y-3">
-          {configs.length === 0 && !isLoading && !error && !editingConfig && (
-            <p>No MCP server configurations found.</p>
-          )}
-          {configs.map((config) =>
-            editedServerId === config.id && editingConfig && isEditingExistingServer ? (
-              <div key={`${config.id}-edit-form`} className="my-3">
-                <McpServerForm
-                  editingConfig={editingConfig}
-                  inputMode={inputMode}
-                  connectionType={connectionType}
-                  jsonString={jsonString}
-                  isEditingExistingServer={isEditingExistingServer}
-                  isLoading={isLoading}
-                  isTesting={isTesting}
-                  testResult={testResult}
-                  onToggleInputMode={toggleInputMode}
-                  onConnectionTypeChange={handleConnectionTypeChange}
-                  onInputChange={handleInputChange}
-                  onJsonInputChange={handleJsonInputChange}
-                  onEnabledChange={handleEnabledChange}
-                  onSave={handleSave}
-                  onCancel={handleCancel}
-                  onTest={handleTestConnection}
-                />
-              </div>
-            ) : (
-              <div
-                key={config.id}
-                className="p-3 rounded-md surface-elevated flex flex-col space-y-3 sm:flex-row sm:flex-wrap sm:justify-between sm:items-start sm:gap-3"
-              >
-                <div className="grow">
-                  <p className="font-medium">
-                    {config.name}{' '}
-                    <span
-                      className={`text-sm ${
-                        config.enabled ? 'text-green-600' : 'text-foreground/60'
-                      }`}
-                    >
-                      ({config.enabled ? 'Enabled' : 'Disabled'})
-                    </span>
-                  </p>
-                  {config.command && (
-                    <p
-                      className="text-xs text-foreground/70 truncate max-w-xs sm:max-w-sm md:max-w-md mt-2"
-                      title={`${config.command} ${config.args?.join(' ') || ''}`}
-                    >
-                      <span className="font-semibold">Command:</span> {config.command}{' '}
-                      {config.args?.join(' ')}
-                    </p>
-                  )}
-                  {config.url && (
-                    <p
-                      className="text-xs text-foreground/70 truncate max-w-xs sm:max-w-sm md:max-w-md mt-2"
-                      title={config.url}
-                    >
-                      <span className="font-semibold">URL:</span> {config.url}
-                    </p>
-                  )}
-                  {config.command && config.args && config.args.length > 0 && (
-                    <p
-                      className="text-xs text-foreground/70 truncate max-w-xs sm:max-w-sm md:max-w-md mt-1"
-                      title={config.args[0]}
-                    >
-                      <span className="font-semibold">Server Path:</span> {config.args[0]}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleEdit(config)}
-                    disabled={
-                      isLoading || !!(editingConfig && !isEditingExistingServer && !editedServerId)
-                    }
-                    title="Edit"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDeleteClick(config.id, config.name)}
-                    disabled={
-                      isLoading || !!(editingConfig && !isEditingExistingServer && !editedServerId)
-                    }
-                    className="text-destructive border-destructive/50 hover:bg-destructive/10 hover:text-destructive hover:border-destructive"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )
-          )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+          {configs.map((config) => (
+            <McpServerCard
+              key={config.id}
+              config={config}
+              runtimeStatus={runtimeStatuses[config.id]}
+              isBusy={togglingServerId === config.id}
+              disableActions={isLoading || hasPendingNewServer}
+              onEdit={() => handleEdit(config)}
+              onDelete={() => handleDeleteClick(config.id, config.name)}
+              onToggleEnabled={() => void handleToggleEnabled(config)}
+            />
+          ))}
         </div>
-      </ScrollArea>
+      </div>
+
+      <Dialog open={isEditorOpen} onOpenChange={handleEditorOpenChange}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader className="pr-8">
+            <DialogTitle>{editorTitle}</DialogTitle>
+            <DialogDescription>{editorDescription}</DialogDescription>
+          </DialogHeader>
+          {editingConfig && (
+            <McpServerForm
+              editingConfig={editingConfig}
+              inputMode={inputMode}
+              connectionType={connectionType}
+              jsonString={jsonString}
+              layout="dialog"
+              isEditingExistingServer={isEditingExistingServer}
+              isLoading={isLoading}
+              isTesting={isTesting}
+              runtimeStatus={editingRuntimeStatus}
+              testResult={testResult}
+              onInputModeChange={handleInputModeChange}
+              onConnectionTypeChange={handleConnectionTypeChange}
+              onInputChange={handleInputChange}
+              onJsonInputChange={handleJsonInputChange}
+              onEnabledChange={handleEnabledChange}
+              onSave={handleSave}
+              onCancel={handleCancel}
+              onTest={handleTestConnection}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <ConfirmationDialog
         isOpen={deleteDialogOpen}
@@ -481,5 +532,216 @@ export function McpSettingsManager(): React.JSX.Element {
         variant="destructive"
       />
     </div>
+  )
+}
+
+interface McpServerCardProps {
+  config: McpServerConfig
+  runtimeStatus?: McpServerRuntimeStatus
+  isBusy: boolean
+  disableActions: boolean
+  onEdit: () => void
+  onDelete: () => void
+  onToggleEnabled: () => void
+}
+
+function McpServerCard({
+  config,
+  runtimeStatus,
+  isBusy,
+  disableActions,
+  onEdit,
+  onDelete,
+  onToggleEnabled
+}: McpServerCardProps): React.JSX.Element {
+  const [errorDetailsOpen, setErrorDetailsOpen] = useState(false)
+  const isRemote = Boolean(config.url)
+  const connectionLabel = isRemote ? 'HTTP' : 'STDIO'
+  const connectionDescription = isRemote ? 'Remote MCP server' : 'Local MCP process'
+  const connectionValue = isRemote ? config.url : config.command
+  const serverPath = !isRemote && config.args && config.args.length > 0 ? config.args[0] : null
+  const extraArgs =
+    !isRemote && Array.isArray(config.args) && config.args.length > 1
+      ? config.args.slice(1).join(' ')
+      : null
+  const runtimeStatusLabel = runtimeStatus
+    ? {
+        connected: 'Connected',
+        connecting: 'Connecting',
+        disabled: 'Disabled',
+        error: 'Error'
+      }[runtimeStatus.state]
+    : null
+  const runtimeStatusClasses = runtimeStatus
+    ? {
+        connected: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400',
+        connecting: 'border-sky-500/20 bg-sky-500/10 text-sky-400',
+        disabled: 'border-border/60 bg-muted/40 text-muted-foreground',
+        error: 'border-destructive/20 bg-destructive/10 text-destructive'
+      }[runtimeStatus.state]
+    : null
+  const runtimeStatusIcon = runtimeStatus
+    ? {
+        connected: <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />,
+        connecting: <Loader2 className="h-3.5 w-3.5 shrink-0 text-sky-400 animate-spin" />,
+        disabled: <PlugZap className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />,
+        error: <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+      }[runtimeStatus.state]
+    : null
+  const runtimeStatusSummary =
+    runtimeStatus?.state === 'connected'
+      ? runtimeStatus.toolCount === 1
+        ? '1 tool discovered.'
+        : `${runtimeStatus.toolCount ?? 0} tools discovered.`
+      : runtimeStatus?.state === 'connecting'
+        ? 'Starting the server and discovering tools.'
+        : runtimeStatus?.state === 'disabled'
+          ? 'This server is saved but currently disabled.'
+          : null
+
+  return (
+    <Card
+      className={`overflow-visible transition-all surface-elevated gap-0 py-0 border-border/60 hover:border-border ${
+        !config.enabled ? 'opacity-60' : ''
+      }`}
+    >
+      <div className="px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{config.name}</span>
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{connectionDescription}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 px-4 pb-3">
+        {!isRemote && connectionValue ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="secondary" className="font-mono text-xs max-w-full truncate">
+              {connectionValue}
+            </Badge>
+            <Badge
+              variant="outline"
+              className="text-xs border-border/70 bg-background text-foreground"
+            >
+              {connectionLabel}
+            </Badge>
+          </div>
+        ) : !isRemote ? (
+          <p className="text-xs text-muted-foreground">No connection target configured</p>
+        ) : null}
+
+        {isRemote && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge
+              variant="outline"
+              className="text-xs border-border/70 bg-background text-foreground"
+            >
+              {connectionLabel}
+            </Badge>
+          </div>
+        )}
+
+        {serverPath && (
+          <p
+            className="text-xs text-muted-foreground mt-2 line-clamp-2 break-all"
+            title={serverPath}
+          >
+            {serverPath}
+          </p>
+        )}
+
+        {extraArgs && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2" title={extraArgs}>
+            {extraArgs}
+          </p>
+        )}
+
+        {config.url && (
+          <p
+            className="text-xs text-muted-foreground mt-2 line-clamp-2 break-all"
+            title={config.url}
+          >
+            {config.url}
+          </p>
+        )}
+
+        {runtimeStatus && runtimeStatus.state !== 'disabled' && (
+          <div className="relative mt-3">
+            <div className={`rounded-md border text-xs ${runtimeStatusClasses}`}>
+              {runtimeStatus.state === 'error' && (runtimeStatus.error || runtimeStatus.detail) ? (
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 cursor-pointer select-none"
+                  onClick={() => setErrorDetailsOpen((v) => !v)}
+                >
+                  {runtimeStatusIcon}
+                  <span className="font-medium shrink-0">{runtimeStatusLabel}</span>
+                  <span className="truncate opacity-90">{runtimeStatus.error}</span>
+                  <ChevronDown className={`ml-auto h-3 w-3 shrink-0 transition-transform ${errorDetailsOpen ? 'rotate-180' : ''}`} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-1.5">
+                  {runtimeStatusIcon}
+                  <span className="font-medium">{runtimeStatusLabel}</span>
+                  {runtimeStatus.serverName && (
+                    <span className="text-muted-foreground truncate">
+                      &middot; {runtimeStatus.serverName}
+                      {runtimeStatus.serverVersion ? ` v${runtimeStatus.serverVersion}` : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {errorDetailsOpen && runtimeStatus.state === 'error' && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-md border border-border/60 bg-card p-3 shadow-lg text-xs space-y-2">
+                {runtimeStatus.error && (
+                  <p className="text-destructive wrap-break-word text-[11px] leading-relaxed">
+                    {runtimeStatus.error}
+                  </p>
+                )}
+                {runtimeStatus.detail && (
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-2 font-mono text-[11px] leading-4 text-foreground/70 border border-border/40">
+                    {runtimeStatus.detail}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border/40 px-4 py-2 flex items-center gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1.5"
+          onClick={onEdit}
+          disabled={disableActions || isBusy}
+        >
+          <Edit className="h-3 w-3" />
+          Edit
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+          onClick={onDelete}
+          disabled={disableActions || isBusy}
+        >
+          <Trash2 className="h-3 w-3" />
+          Delete
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Switch
+            checked={config.enabled}
+            onCheckedChange={onToggleEnabled}
+            disabled={disableActions || isBusy}
+            aria-label={config.enabled ? 'Disable MCP server' : 'Enable MCP server'}
+          />
+        </div>
+      </div>
+
+    </Card>
   )
 }

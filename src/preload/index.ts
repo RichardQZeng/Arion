@@ -19,6 +19,7 @@ import {
   type LLMProviderType,
   type AllLLMConfigurationsForRenderer,
   type McpServerConfig,
+  type McpServerRuntimeStatus,
   type McpServerTestResult,
   type SettingsApi,
   type ChatApi,
@@ -61,6 +62,8 @@ import {
   type ExposedShellApi,
   type McpPermissionApi,
   type McpPermissionRequest,
+  type SecurityApprovalApi,
+  type SecurityApprovalRequest,
   type PostgreSQLApi,
   type PostgreSQLConfig,
   type PostgreSQLConnectionResult,
@@ -312,6 +315,8 @@ const ctgApi = {
       ipcRenderer.invoke(IpcChannels.getAllLLMConfigs),
     getMcpServerConfigs: (): Promise<McpServerConfig[]> =>
       ipcRenderer.invoke(IpcChannels.getMcpServerConfigs),
+    getMcpServerRuntimeStatuses: (): Promise<McpServerRuntimeStatus[]> =>
+      ipcRenderer.invoke(IpcChannels.getMcpServerRuntimeStatuses),
     addMcpServerConfig: (config: Omit<McpServerConfig, 'id'>): Promise<McpServerConfig | null> =>
       ipcRenderer.invoke(IpcChannels.addMcpServerConfig, config),
     updateMcpServerConfig: (
@@ -323,6 +328,14 @@ const ctgApi = {
       ipcRenderer.invoke(IpcChannels.deleteMcpServerConfig, configId),
     testMcpServerConfig: (config: Omit<McpServerConfig, 'id'>): Promise<McpServerTestResult> =>
       ipcRenderer.invoke(IpcChannels.testMcpServerConfig, config),
+    onMcpServerRuntimeStatusUpdated: (callback: (status: McpServerRuntimeStatus) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: McpServerRuntimeStatus): void =>
+        callback(payload)
+      ipcRenderer.on(IpcChannels.mcpServerRuntimeStatusUpdatedEvent, handler)
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.mcpServerRuntimeStatusUpdatedEvent, handler)
+      }
+    },
     getSystemPromptConfig: (): Promise<SystemPromptConfig> =>
       ipcRenderer.invoke(IpcChannels.getSystemPromptConfig),
     setSystemPromptConfig: (config: SystemPromptConfig): Promise<void> =>
@@ -721,6 +734,18 @@ const ctgApi = {
       }
     }
   } as McpPermissionApi,
+  securityApprovals: {
+    respond: (requestId: string, approved: boolean): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.securityApprovalResponse, requestId, approved),
+    onApprovalRequest: (callback: (payload: SecurityApprovalRequest) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: SecurityApprovalRequest): void =>
+        callback(payload)
+      ipcRenderer.on(IpcChannels.securityApprovalRequestEvent, handler)
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.securityApprovalRequestEvent, handler)
+      }
+    }
+  } as SecurityApprovalApi,
   map: {
     onAddFeature: (callback: (payload: AddMapFeaturePayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: AddMapFeaturePayload): void =>
